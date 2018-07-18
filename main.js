@@ -25,8 +25,11 @@ for (var i = 0; i < heightmap_h; ++i)
 var player_x = heightmap_w / 2;
 var player_y = heightmap_h / 2;
 var player_h = 100;
+var player_dir = 0;
 
-var view_distance = heightmap_h / 2;
+var far_distance = heightmap_h / 2;
+var near_distance = 1;
+var focal_length = viewport_w / 2; // 90 degree fov
 
 function vertLine(arr, x, y_start, y_end, color){
   for (var y = y_start | 0; y < y_end | 0; y++) {
@@ -43,22 +46,63 @@ function drawViewport(arr) {
   var horizon = viewport_h / 2;
   var h_scale = 50;
 
-  for (var d = view_distance; d > 0; --d) {
-    var lx = player_x - d;
-    var rx = player_x + d;
+  for (var d = far_distance; d >= near_distance; --d) {
+    var map_w = viewport_w * (d / focal_length);
+    /*
+    var lx = player_x - (map_w / 2);
+    var rx = player_x + (map_w / 2);
 
-    var map_y = player_y - d;
+    var ly = player_y - d;
+    var ry = player_y - d;
+    */
+
+    var lx = player_x - 
+      (d * Math.sin(player_dir) + map_w / 2 * Math.sin(-(Math.PI / 2 - player_dir)));
+    var rx = player_x - 
+      (d * Math.sin(player_dir) - map_w / 2 * Math.sin(-(Math.PI / 2 - player_dir)));
+
+    var ly = player_y - 
+      (d * Math.cos(player_dir) - map_w / 2 * Math.cos(-(Math.PI / 2) - player_dir));
+    var ry = player_y - 
+      (d * Math.cos(player_dir) + map_w / 2 * Math.cos(-(Math.PI / 2) - player_dir));
+
+    if (d == far_distance) {
+      heightmap_g.strokeStyle = "rgb(255,0,0)";
+      heightmap_g.beginPath();
+      heightmap_g.moveTo(player_x, player_y);
+      heightmap_g.lineTo(player_x - d * Math.sin(player_dir), player_y - d * Math.cos(player_dir));
+      heightmap_g.stroke();
+      heightmap_g.closePath();
+    }
+
+
+
+    //if (d == far_distance) {
+      heightmap_g.strokeStyle = "rgb(0,255,0)";
+      heightmap_g.beginPath();
+      heightmap_g.moveTo(lx, ly);
+      heightmap_g.lineTo(rx, ry);
+      heightmap_g.stroke();
+      heightmap_g.closePath();
+    //}
 
     // sample pl..pr line for each x pixel
-    for (var xi = 0; xi < viewport_w; ++xi) {
-      var map_x = lx + xi * (rx - lx) / viewport_w;
+    for (var i = 0; i < viewport_w; ++i) {
+      var map_x = lx + i * (rx - lx) / viewport_w;
+      var map_y = ly + i * (ry - ly) / viewport_w;
+
+      //console.log(map_x, map_y);
+      if (map_x < 0 || map_x >= heightmap_w || map_y < 0 || map_y >= heightmap_h)
+        continue;
+
       var map_h = heightmap_mat[map_y | 0][map_x | 0];
 
       var viewport_y = horizon + (player_h - map_h) / d * h_scale;
-      var color = [map_h,map_h,255*(d / view_distance)];
+      var color = [map_h,map_h,map_h];
+      if (map_h == 0) color = [50,100,255];
 
       if (viewport_y < viewport_h)
-        vertLine(arr, xi, viewport_y, viewport_h, color);
+        vertLine(arr, i, viewport_y, viewport_h, color);
     }
   }
 
@@ -87,15 +131,11 @@ function generateHeightmap(n_components) {
   var amplitudes = [];
   var frequenqies = [];
 
-  var amp_min = 1;
-  var amp_max = 10;
   var total_amp = 0;
 
-  var freq_min = 1;
-  var freq_max = 10;
-
   for (var i = 0; i < n_components; ++i) {
-    directions.push(Math.random() * Math.PI * 2);
+    //directions.push(Math.random() * Math.PI * 2);
+    directions.push(i+1);
     //frequenqies.push(freq_min + Math.random() * (freq_max - freq_min));
     //amplitudes.push(amp_min + Math.random() * (amp_max - amp_min));
     frequenqies.push(i+1);
@@ -126,17 +166,36 @@ function generateHeightmap(n_components) {
 
 };
 
-function draw() {    
-  
-  //vertLine(buffer, w/2, 0, h, [255,255,0]);
-
+function init() {
   generateHeightmap(20);
   drawHeightmap(heightmap_buffer);
+  heightmap_g.putImageData(heightmap_imagedata, 0, 0);
+}
+
+function update() {
+  player_dir += 0.02;
+}
+
+function draw() {    
+
+  viewport_g.clearRect(0, 0, viewport_w, viewport_h);
+
+  drawHeightmap(heightmap_buffer);
+  heightmap_g.putImageData(heightmap_imagedata, 0, 0);
 
   drawViewport(viewport_buffer);
-  
-  heightmap_g.putImageData(heightmap_imagedata, 0, 0);
   viewport_g.putImageData(viewport_imagedata, 0, 0);
+
 };
 
+function tick() {
+  update();
+  draw();
+
+  window.requestAnimationFrame(tick);
+}
+
+init();
 draw();
+
+tick();
