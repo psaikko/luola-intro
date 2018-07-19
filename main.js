@@ -41,30 +41,29 @@ function vertLine(arr, x, y_start, y_end, color){
   }
 };
 
+
 function drawViewport(arr) {
 
   var horizon = viewport_h / 2;
   var h_scale = 50;
 
-  for (var d = far_distance; d >= near_distance; --d) {
-    var map_w = viewport_w * (d / focal_length);
-    /*
-    var lx = player_x - (map_w / 2);
-    var rx = player_x + (map_w / 2);
+  // y-buffer for drawing front-to-back
+  var y_buf = [];
+  for (var i = 0; i < viewport_w; ++i) 
+    y_buf[i] = viewport_h;
 
-    var ly = player_y - d;
-    var ry = player_y - d;
-    */
+  for (var d = near_distance; d <= far_distance; ++d) {
+    var map_w = viewport_w * (d / focal_length);
 
     var lx = player_x - 
-      (d * Math.sin(player_dir) + map_w / 2 * Math.sin(-(Math.PI / 2 - player_dir)));
+      (d * Math.sin(player_dir) + map_w / 2 * Math.sin(-Math.PI / 2 + player_dir));
     var rx = player_x - 
-      (d * Math.sin(player_dir) - map_w / 2 * Math.sin(-(Math.PI / 2 - player_dir)));
+      (d * Math.sin(player_dir) - map_w / 2 * Math.sin(-Math.PI / 2 + player_dir));
 
     var ly = player_y - 
-      (d * Math.cos(player_dir) - map_w / 2 * Math.cos(-(Math.PI / 2) - player_dir));
+      (d * Math.cos(player_dir) - map_w / 2 * Math.cos(-Math.PI / 2 - player_dir));
     var ry = player_y - 
-      (d * Math.cos(player_dir) + map_w / 2 * Math.cos(-(Math.PI / 2) - player_dir));
+      (d * Math.cos(player_dir) + map_w / 2 * Math.cos(-Math.PI / 2 - player_dir));
 
     if (d == far_distance) {
       heightmap_g.strokeStyle = "rgb(255,0,0)";
@@ -75,16 +74,12 @@ function drawViewport(arr) {
       heightmap_g.closePath();
     }
 
-
-
-    //if (d == far_distance) {
-      heightmap_g.strokeStyle = "rgb(0,255,0)";
-      heightmap_g.beginPath();
-      heightmap_g.moveTo(lx, ly);
-      heightmap_g.lineTo(rx, ry);
-      heightmap_g.stroke();
-      heightmap_g.closePath();
-    //}
+    heightmap_g.strokeStyle = "rgb(0,255,0)";
+    heightmap_g.beginPath();
+    heightmap_g.moveTo(lx, ly);
+    heightmap_g.lineTo(rx, ry);
+    heightmap_g.stroke();
+    heightmap_g.closePath();
 
     // sample pl..pr line for each x pixel
     for (var i = 0; i < viewport_w; ++i) {
@@ -98,13 +93,20 @@ function drawViewport(arr) {
       var map_h = heightmap_mat[map_y | 0][map_x | 0];
 
       var viewport_y = horizon + (player_h - map_h) / d * h_scale;
+      if (viewport_y >= viewport_h)
+        continue;
+
       var color = [map_h,map_h,map_h];
       if (map_h == 0) color = [50,100,255];
 
-      if (viewport_y < viewport_h)
-        vertLine(arr, i, viewport_y, viewport_h, color);
+      vertLine(arr, i, viewport_y, y_buf[i], color);
+      y_buf[i] = viewport_y;
     }
   }
+
+  // clear sky
+  for (var i = 0; i < viewport_w; ++i)
+    vertLine(arr, i, 0, y_buf[i], [180,180,255]);
 
 };
  
@@ -168,8 +170,6 @@ function generateHeightmap(n_components) {
 
 function init() {
   generateHeightmap(20);
-  drawHeightmap(heightmap_buffer);
-  heightmap_g.putImageData(heightmap_imagedata, 0, 0);
 }
 
 function update() {
@@ -177,8 +177,6 @@ function update() {
 }
 
 function draw() {    
-
-  viewport_g.clearRect(0, 0, viewport_w, viewport_h);
 
   drawHeightmap(heightmap_buffer);
   heightmap_g.putImageData(heightmap_imagedata, 0, 0);
