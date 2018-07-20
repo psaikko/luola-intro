@@ -17,17 +17,15 @@ var viewport_buffer = viewport_imagedata.data;
 
 var heightmap_imagedata = heightmap_g.getImageData(0,0,heightmap_w,heightmap_h);
 var heightmap_buffer = heightmap_imagedata.data;
-    
-var heightmap_mat = [];
-for (var i = 0; i < heightmap_h; ++i)
-  heightmap_mat.push([]);
+
+var heightmap_arr = new Uint8ClampedArray(heightmap_w * heightmap_h);
 
 var player_x = heightmap_w / 2;
 var player_y = heightmap_h / 2;
 var player_h = 100;
 var player_dir = 0;
 
-var far_distance = heightmap_h / 2;
+var far_distance = heightmap_w / 2;
 var near_distance = 1;
 var focal_length = viewport_w / 2; // 90 degree fov
 
@@ -41,7 +39,6 @@ function vertLine(arr, x, y_start, y_end, color){
   }
 };
 
-
 function drawViewport(arr) {
 
   var horizon = viewport_h / 2;
@@ -52,75 +49,87 @@ function drawViewport(arr) {
   for (var i = 0; i < viewport_w; ++i) 
     y_buf[i] = viewport_h;
 
+  var half_fov_angle = Math.atan(viewport_w / (2 * focal_length));
+  var cos_hfa = Math.cos(half_fov_angle);
+
+  var l_sin = Math.sin(player_dir + half_fov_angle);
+  var l_cos = Math.cos(player_dir + half_fov_angle);
+
+  var r_sin = Math.sin(player_dir - half_fov_angle);
+  var r_cos = Math.cos(player_dir - half_fov_angle);
+
+  
+
   for (var d = near_distance; d <= far_distance; ++d) {
-    var map_w = viewport_w * (d / focal_length);
+    
+    var d_ = d / cos_hfa;
 
-    var lx = player_x - 
-      (d * Math.sin(player_dir) + map_w / 2 * Math.sin(-Math.PI / 2 + player_dir));
-    var rx = player_x - 
-      (d * Math.sin(player_dir) - map_w / 2 * Math.sin(-Math.PI / 2 + player_dir));
+    var lx = player_x + d_ * l_sin;
+    var ly = player_y + d_ * l_cos;
 
-    var ly = player_y - 
-      (d * Math.cos(player_dir) - map_w / 2 * Math.cos(-Math.PI / 2 - player_dir));
-    var ry = player_y - 
-      (d * Math.cos(player_dir) + map_w / 2 * Math.cos(-Math.PI / 2 - player_dir));
-
-    if (d == far_distance) {
-      heightmap_g.strokeStyle = "rgb(255,0,0)";
-      heightmap_g.beginPath();
-      heightmap_g.moveTo(player_x, player_y);
-      heightmap_g.lineTo(player_x - d * Math.sin(player_dir), player_y - d * Math.cos(player_dir));
-      heightmap_g.stroke();
-      heightmap_g.closePath();
-    }
-
+    var rx = player_x + d_ * r_sin;
+    var ry = player_y + d_ * r_cos;
+    
+    // draw fov cone on heightmap
+    
     heightmap_g.strokeStyle = "rgb(0,255,0)";
     heightmap_g.beginPath();
+    
     heightmap_g.moveTo(lx, ly);
     heightmap_g.lineTo(rx, ry);
     heightmap_g.stroke();
-    heightmap_g.closePath();
 
+    heightmap_g.closePath();
+    
+    
     // sample pl..pr line for each x pixel
+    var dx = (rx - lx) / viewport_w;
+    var dy = (ry - ly) / viewport_w;
+
     for (var i = 0; i < viewport_w; ++i) {
-      var map_x = lx + i * (rx - lx) / viewport_w;
-      var map_y = ly + i * (ry - ly) / viewport_w;
+      
+      var map_x = (lx + i * dx) | 0;
+      var map_y = (ly + i * dy) | 0;
+      
+      //var map_x = 1, map_y = 1;
 
       //console.log(map_x, map_y);
       if (map_x < 0 || map_x >= heightmap_w || map_y < 0 || map_y >= heightmap_h)
         continue;
 
-      var map_h = heightmap_mat[map_y | 0][map_x | 0];
+      //var map_h = heightmap_mat[map_y][map_x];
+      var map_h = heightmap_arr[map_y * heightmap_w + map_x];
 
       var viewport_y = horizon + (player_h - map_h) / d * h_scale;
+      /*
       if (viewport_y >= viewport_h)
         continue;
-
+      */
       var color = [map_h,map_h,map_h];
       if (map_h == 0) color = [50,100,255];
 
       vertLine(arr, i, viewport_y, y_buf[i], color);
-      y_buf[i] = viewport_y;
+
+      y_buf[i] = Math.min(viewport_y, y_buf[i]);
+
     }
   }
-
+  
   // clear sky
   for (var i = 0; i < viewport_w; ++i)
     vertLine(arr, i, 0, y_buf[i], [180,180,255]);
-
 };
  
 function drawHeightmap(arr) {
   for (var y = 0; y < heightmap_h; ++y) {
     for (var x = 0; x < heightmap_w; ++x) {
 
-      var ht = heightmap_mat[y][x];
-      var color = [ht,ht,ht];
+      var ht = heightmap_arr[y * heightmap_w + x];
 
       var i = 4 * (heightmap_w * y) + 4 * x;
-      arr[i + 0] = color[0];
-      arr[i + 1] = color[1];
-      arr[i + 2] = color[2];
+      arr[i + 0] = ht;
+      arr[i + 1] = ht;
+      arr[i + 2] = ht;
       arr[i + 3] = 255;
 
     }
@@ -162,7 +171,7 @@ function generateHeightmap(n_components) {
       // clip values below 126 for "water level"
       ht = (ht > 126) ? (ht-126)*2 : 0;
 
-      heightmap_mat[y][x] = ht;
+      heightmap_arr[y * heightmap_w + x] = ht;
     }
   }
 
@@ -173,27 +182,38 @@ function init() {
 }
 
 function update() {
-  player_dir += 0.02;
+  player_dir -= 0.01;
 }
 
 function draw() {    
-
+  
   drawHeightmap(heightmap_buffer);
   heightmap_g.putImageData(heightmap_imagedata, 0, 0);
 
+  //heightmap_g.strokeStyle = "rgb(0,255,0)";
   drawViewport(viewport_buffer);
-  viewport_g.putImageData(viewport_imagedata, 0, 0);
 
+  viewport_g.putImageData(viewport_imagedata, 0, 0);
+  
 };
 
-function tick() {
+var prev_time = 0;
+
+function tick(timestamp) {
+  
+  document.getElementById("fps").innerHTML = "" + 1000 / (timestamp - prev_time);
+
+  prev_time = timestamp;
+
   update();
   draw();
 
   window.requestAnimationFrame(tick);
+  //window.setTimeout(tick, 1000/30);
 }
 
 init();
 draw();
 
-tick();
+window.requestAnimationFrame(tick);
+//window.setTimeout(tick, 1000/30);
