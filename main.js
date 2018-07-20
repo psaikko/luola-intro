@@ -25,7 +25,7 @@ var player_y = heightmap_h / 2;
 var player_h = 100;
 var player_dir = 0;
 
-var far_distance = heightmap_w / 2;
+var far_distance = 300;
 var near_distance = 1;
 var focal_length = viewport_w / 2; // 90 degree fov
 
@@ -63,8 +63,6 @@ function drawViewport(arr) {
   var r_sin = Math.sin(player_dir - half_fov_angle);
   var r_cos = Math.cos(player_dir - half_fov_angle);
 
-  
-
   for (var d = near_distance; d <= far_distance; d += 1) {
     
     var d_ = d / cos_hfa;
@@ -86,42 +84,42 @@ function drawViewport(arr) {
 
     heightmap_g.closePath();
     
-    
     // sample pl..pr line for each x pixel
     var dx = (rx - lx) / viewport_w;
     var dy = (ry - ly) / viewport_w;
 
     for (var i = 0; i < viewport_w; ++i) {
       
-      var map_x = (lx + i * dx) | 0;
-      var map_y = (ly + i * dy) | 0;
-      
-      //var map_x = 1, map_y = 1;
+      var map_x_f = (lx + i * dx);
+      var map_y_f = (ly + i * dy);
 
-      //console.log(map_x, map_y);
-      if (map_x < 0 || map_x >= heightmap_w || map_y < 0 || map_y >= heightmap_h)
-        continue;
+      while (map_x_f < 0) map_x_f += heightmap_w;
+      while (map_y_f < 0) map_y_f += heightmap_h;
 
-      //var map_h = heightmap_mat[map_y][map_x];
+      map_x_f %= heightmap_w;
+      map_y_f %= heightmap_h;
+
+      var map_x_i = map_x_f | 0;
+      var map_y_i = map_y_f | 0;
+
       var map_h = 0;
+      var map_arr_ind = map_y_i * heightmap_w + map_x_i;
+
       if (interpolate && 
-          (map_x > 0) && 
-          (map_x < heightmap_w-1) && 
-          (map_y > 0) && 
-          (map_y < heightmap_h-1)) {
+          (map_x_i != heightmap_w-1) && 
+          (map_y_i != heightmap_h-1)) {
 
-        var frac_x = (lx + i * dx) - map_x;
-        var frac_y = (ly + i * dy) - map_y;
+        var frac_x = map_x_f - map_x_i;
+        var frac_y = map_y_f - map_y_i;
 
-        map_h += heightmap_arr[map_y * heightmap_w + map_x]         * (1 - frac_x) * (1 - frac_y);
-        map_h += heightmap_arr[map_y * heightmap_w + (map_x+1)]     * (frac_x) * (1 - frac_y);
-        map_h += heightmap_arr[(map_y+1) * heightmap_w + map_x]     * (1 - frac_x) * (frac_y);
-        map_h += heightmap_arr[(map_y+1) * heightmap_w + (map_x+1)] * frac_x * frac_y;
-
-        map_h /= 4;
+        map_h += heightmap_arr[map_arr_ind]         * (1 - frac_x) * (1 - frac_y);
+        map_h += heightmap_arr[map_arr_ind + 1]     * (frac_x) * (1 - frac_y);
+        map_h += heightmap_arr[map_arr_ind + heightmap_w]     * (1 - frac_x) * (frac_y);
+        map_h += heightmap_arr[map_arr_ind + heightmap_w + 1] * frac_x * frac_y;
         map_h = map_h | 0;
+
       } else {
-        map_h = heightmap_arr[map_y * heightmap_w + map_x];
+        map_h = heightmap_arr[map_arr_ind];
       }
 
       var viewport_y = horizon + (player_h - map_h) / d * h_scale;
@@ -170,18 +168,17 @@ function drawHeightmap(arr) {
 
 function generateHeightmap(n_components) {
 
-  var directions = [];
+  var x_freq = [];
+  var y_freq = [];
   var amplitudes = [];
-  var frequenqies = [];
 
   var total_amp = 0;
 
   for (var i = 0; i < n_components; ++i) {
-    directions.push(Math.random() * Math.PI * 2);
     //directions.push(i+1);
-    //frequenqies.push(freq_min + Math.random() * (freq_max - freq_min));
-    //amplitudes.push(amp_min + Math.random() * (amp_max - amp_min));
-    frequenqies.push(i+1);
+
+    x_freq.push((Math.random() * 10) | 0);
+    y_freq.push((Math.random() * 10) | 0);
     amplitudes.push(n_components - i);
     total_amp += amplitudes[i];
   }
@@ -192,25 +189,26 @@ function generateHeightmap(n_components) {
 
       // add sine wave components
       for (var c = 0; c < n_components; ++c) {
-        var v = Math.sin(directions[c])*x + Math.cos(directions[c])*y;
+        var v = x_freq[c]*x + y_freq[c]*y;
         ht += amplitudes[c] * 
-              (1 + Math.sin(v / heightmap_w * Math.PI * 2 * frequenqies[c])) / 2;
+              (1 + Math.sin(v / heightmap_w * Math.PI * 2)) / 2;
       }
-      
+
       // normalize to 0..255
       ht /= total_amp;
       ht *= 255;
+
       // clip values below 126 for "water level"
       ht = (ht > 126) ? (ht-126)*2 : 0;
 
-      heightmap_arr[y * heightmap_w + x] = ht;
+      heightmap_arr[y * heightmap_w + x] = ht | 0; 
     }
   }
 
 };
 
 function init() {
-  generateHeightmap(20);
+  generateHeightmap(100);
 }
 
 function update() {
