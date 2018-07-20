@@ -29,6 +29,8 @@ var far_distance = heightmap_w / 2;
 var near_distance = 1;
 var focal_length = viewport_w / 2; // 90 degree fov
 
+var interpolate = true;
+
 function vertLine(arr, x, y_start, y_end, r, g, b){
   for (var y = y_start | 0; y < y_end | 0; y++) {
     var i = viewport_w * y + x;
@@ -63,7 +65,7 @@ function drawViewport(arr) {
 
   
 
-  for (var d = near_distance; d <= far_distance; ++d) {
+  for (var d = near_distance; d <= far_distance; d += 1) {
     
     var d_ = d / cos_hfa;
 
@@ -101,14 +103,32 @@ function drawViewport(arr) {
         continue;
 
       //var map_h = heightmap_mat[map_y][map_x];
-      var map_h = heightmap_arr[map_y * heightmap_w + map_x];
+      var map_h = 0;
+      if (interpolate && 
+          (map_x > 0) && 
+          (map_x < heightmap_w-1) && 
+          (map_y > 0) && 
+          (map_y < heightmap_h-1)) {
+
+        var frac_x = (lx + i * dx) - map_x;
+        var frac_y = (ly + i * dy) - map_y;
+
+        map_h += heightmap_arr[map_y * heightmap_w + map_x]         * (1 - frac_x) * (1 - frac_y);
+        map_h += heightmap_arr[map_y * heightmap_w + (map_x+1)]     * (frac_x) * (1 - frac_y);
+        map_h += heightmap_arr[(map_y+1) * heightmap_w + map_x]     * (1 - frac_x) * (frac_y);
+        map_h += heightmap_arr[(map_y+1) * heightmap_w + (map_x+1)] * frac_x * frac_y;
+
+        map_h /= 4;
+        map_h = map_h | 0;
+      } else {
+        map_h = heightmap_arr[map_y * heightmap_w + map_x];
+      }
 
       var viewport_y = horizon + (player_h - map_h) / d * h_scale;
       /*
       if (viewport_y >= viewport_h)
         continue;
       */
-      var color = [map_h,map_h,map_h];
       var r = map_h,
           g = map_h,
           b = map_h;
@@ -157,8 +177,8 @@ function generateHeightmap(n_components) {
   var total_amp = 0;
 
   for (var i = 0; i < n_components; ++i) {
-    //directions.push(Math.random() * Math.PI * 2);
-    directions.push(i+1);
+    directions.push(Math.random() * Math.PI * 2);
+    //directions.push(i+1);
     //frequenqies.push(freq_min + Math.random() * (freq_max - freq_min));
     //amplitudes.push(amp_min + Math.random() * (amp_max - amp_min));
     frequenqies.push(i+1);
