@@ -22,7 +22,7 @@ var heightmap_arr = new Uint8ClampedArray(heightmap_w * heightmap_h);
 
 var player_x = heightmap_w / 2;
 var player_y = heightmap_h / 2;
-var player_h = 100;
+var player_h = 10;
 var player_dir = 0;
 
 var far_distance = 300;
@@ -47,7 +47,7 @@ function vertLine(arr, x, y_start, y_end, r, g, b){
 function drawViewport(arr) {
 
   var horizon = viewport_h / 2;
-  var h_scale = 50;
+  var h_scale = 20;
 
   // y-buffer for drawing front-to-back
   var y_buf = [];
@@ -62,6 +62,8 @@ function drawViewport(arr) {
 
   var r_sin = Math.sin(player_dir - half_fov_angle);
   var r_cos = Math.cos(player_dir - half_fov_angle);
+
+  var terrain_h = heightmap_arr[(player_y|0) * heightmap_w + (player_x|0)];
 
   for (var d = near_distance; d <= far_distance; d += 1) {
     
@@ -105,24 +107,25 @@ function drawViewport(arr) {
       var map_h = 0;
       var map_arr_ind = map_y_i * heightmap_w + map_x_i;
 
-      if (interpolate && 
-          (map_x_i != heightmap_w-1) && 
-          (map_y_i != heightmap_h-1)) {
+      if (interpolate) {
 
         var frac_x = map_x_f - map_x_i;
         var frac_y = map_y_f - map_y_i;
 
-        map_h += heightmap_arr[map_arr_ind]         * (1 - frac_x) * (1 - frac_y);
-        map_h += heightmap_arr[map_arr_ind + 1]     * (frac_x) * (1 - frac_y);
-        map_h += heightmap_arr[map_arr_ind + heightmap_w]     * (1 - frac_x) * (frac_y);
-        map_h += heightmap_arr[map_arr_ind + heightmap_w + 1] * frac_x * frac_y;
+        var map_x_i_2 = (map_x_i + 1) % heightmap_w;
+        var map_y_i_2 = (map_y_i + 1) % heightmap_h;
+
+        map_h += heightmap_arr[map_y_i * heightmap_w + map_x_i]     * (1 - frac_x) * (1 - frac_y);
+        map_h += heightmap_arr[map_y_i * heightmap_w + map_x_i_2]   * (frac_x) * (1 - frac_y);
+        map_h += heightmap_arr[map_y_i_2 * heightmap_w + map_x_i]   * (1 - frac_x) * (frac_y);
+        map_h += heightmap_arr[map_y_i_2 * heightmap_w + map_x_i_2] * frac_x * frac_y;
         map_h = map_h | 0;
 
       } else {
         map_h = heightmap_arr[map_arr_ind];
       }
 
-      var viewport_y = horizon + (player_h - map_h) / d * h_scale;
+      var viewport_y = horizon + (terrain_h + player_h - map_h) / d * h_scale;
       /*
       if (viewport_y >= viewport_h)
         continue;
@@ -177,9 +180,9 @@ function generateHeightmap(n_components) {
   for (var i = 0; i < n_components; ++i) {
     //directions.push(i+1);
 
-    x_freq.push((Math.random() * 10) | 0);
-    y_freq.push((Math.random() * 10) | 0);
-    amplitudes.push(n_components - i);
+    x_freq.push((Math.random() * (i+1)) | 0);
+    y_freq.push((Math.random() * (i+1)) | 0);
+    amplitudes.push((n_components - i) * (n_components - i));
     total_amp += amplitudes[i];
   }
 
@@ -208,20 +211,20 @@ function generateHeightmap(n_components) {
 };
 
 function init() {
-  generateHeightmap(100);
+  generateHeightmap(50);
 }
 
 function update() {
-  player_dir -= 0.01;
+  player_dir -= 0.004;
+  player_y += 0.2;
+  if (player_y < 0) player_y += heightmap_h;
+  if (player_y > heightmap_h-1) player_y -= heightmap_h;
 }
 
-function draw() {    
+function draw() {
   
   drawHeightmap(heightmap_buffer32);
   heightmap_g.putImageData(heightmap_imagedata, 0, 0);
-
-  //heightmap_g.strokeStyle = "rgb(0,255,0)";
-
 
   drawViewport(viewport_buffer32);
   viewport_g.putImageData(viewport_imagedata, 0, 0);
