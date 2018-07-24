@@ -20,16 +20,20 @@ var heightmap_buffer32 = new Uint32Array(heightmap_imagedata.data.buffer);
 
 var heightmap_arr = new Uint8ClampedArray(heightmap_w * heightmap_h);
 
-var player_x = heightmap_w / 2;
+var player_x = heightmap_w / 2
 var player_y = heightmap_h / 2;
-var player_h = 10;
+var player_h = 50;
 var player_dir = 0;
 
-var far_distance = 300;
+var ceil_h = 400;
+
+var far_distance = 100;
 var near_distance = 1;
 var focal_length = viewport_w / 2; // 90 degree fov
 
 var interpolate = true;
+
+var water_level = 120;
 
 function vertLine(arr, x, y_start, y_end, r, g, b){
   for (var y = y_start | 0; y < y_end | 0; y++) {
@@ -47,12 +51,17 @@ function vertLine(arr, x, y_start, y_end, r, g, b){
 function drawViewport(arr) {
 
   var horizon = viewport_h / 2;
-  var h_scale = 20;
+  var horizon_top = horizon - 100;
+  var h_scale = 30;
 
   // y-buffer for drawing front-to-back
   var y_buf = [];
   for (var i = 0; i < viewport_w; ++i) 
     y_buf[i] = viewport_h;
+
+  var y_buf_top = [];
+  for (var i = 0; i < viewport_w; ++i) 
+    y_buf_top[i] = 0;
 
   var half_fov_angle = Math.atan(viewport_w / (2 * focal_length));
   var cos_hfa = Math.cos(half_fov_angle);
@@ -65,8 +74,11 @@ function drawViewport(arr) {
 
   var terrain_h = heightmap_arr[(player_y|0) * heightmap_w + (player_x|0)];
 
-  for (var d = near_distance; d <= far_distance; d += 1) {
+  var d_incr = 0.01;
+  for (var d = near_distance; d <= far_distance; d += d_incr) {
     
+    d_incr *= 1.01;
+
     var d_ = d / cos_hfa;
 
     var lx = player_x + d_ * l_sin;
@@ -125,23 +137,32 @@ function drawViewport(arr) {
         map_h = heightmap_arr[map_arr_ind];
       }
 
-      var viewport_y = horizon + (terrain_h + player_h - map_h) / d * h_scale;
-      /*
-      if (viewport_y >= viewport_h)
-        continue;
-      */
-      var r = map_h,
-          g = map_h,
-          b = map_h;
+      var map_top = map_h * map_h * map_h / 10000;
 
-      if (map_h == 0) {
+      var viewport_y_top = horizon - ((ceil_h - terrain_h) + player_h - map_top) / d * h_scale;
+
+      terrain_h = terrain_h < water_level ? water_level : terrain_h;
+
+      var viewport_y = horizon + (terrain_h + player_h - map_h) / d * h_scale;
+
+      var r = map_h * 0.8,
+          g = r * 0.6,
+          b = r * 0.3;
+
+      var fog = 1 - (d * d / (far_distance * far_distance));
+
+      vertLine(arr, i, y_buf_top[i], Math.min(viewport_y_top, y_buf[i]), r * fog, g * fog, b * fog); // ceil
+
+      if (map_h < water_level) {
         r = 50;
         g = 100;
         b = 255;
       }
 
-      vertLine(arr, i, viewport_y, y_buf[i], r, g, b);
+      vertLine(arr, i, Math.max(y_buf_top[i], viewport_y), y_buf[i], r * fog, g * fog, b * fog); // bot
 
+
+      y_buf_top[i] = Math.max(viewport_y_top, y_buf_top[i]);
       y_buf[i] = Math.min(viewport_y, y_buf[i]);
 
     }
@@ -149,7 +170,7 @@ function drawViewport(arr) {
 
   // clear sky
   for (var i = 0; i < viewport_w; ++i)
-    vertLine(arr, i, 0, y_buf[i], 150,150,255);
+    vertLine(arr, i, y_buf_top[i], y_buf[i], 0,0,0);
 };
  
 function drawHeightmap(arr) {
@@ -202,7 +223,7 @@ function generateHeightmap(n_components) {
       ht *= 255;
 
       // clip values below 126 for "water level"
-      ht = (ht > 126) ? (ht-126)*2 : 0;
+      //ht = (ht > 126) ? (ht-126)*2 : 0;
 
       heightmap_arr[y * heightmap_w + x] = ht | 0; 
     }
@@ -211,7 +232,7 @@ function generateHeightmap(n_components) {
 };
 
 function init() {
-  generateHeightmap(50);
+  generateHeightmap(100);
 }
 
 function update() {
