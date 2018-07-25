@@ -1,141 +1,104 @@
-"use strict";
+//
+// Audio
+//
 
-var viewport = document.getElementById("viewport");
+var data = Array(60*8000);
+
+function wave(i, freq) {
+  return Math.sin(i * 2 * Math.PI / 8000 * freq) > 0 ? 0 : 255;
+}
+
+for (var i = 0; i < 60*8000; ++i) {
+  data[i] = wave(i, 220 * (2 + Math.sin(i * 2 * Math.PI / 8000 * 0.1))); 
+}
+
+function bytesToString(bs) {
+  var s = "";
+  for (var i = 0; i < bs.length; ++i)
+    s += String.fromCharCode(bs[i]);
+  return s;
+}
+
+var header = "RIFF$\xa6\x0e\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00@\x1f\x00\x00@\x1f\x00\x00\x01\x00\x08\x00data\x00\xa6\x0e\x00";
+document.body.innerHTML = '<audio autoplay src="data:audio/wav;base64,'+btoa(header + bytesToString(data))+'"></audio>'
+
+//
+// Video
+//
+
+document.body.innerHTML += "<canvas id='V' width='800' height='600' style='width: 100%;height 100%;'></canvas>"
+
+var viewport = document.getElementById("V");
 var viewport_g = viewport.getContext("2d");
     
-var viewport_w = viewport.width,
-    viewport_h = viewport.height;
-
-var heightmap = document.getElementById("heightmap");
-var heightmap_g = heightmap.getContext("2d");
+var viewport_w = 800,
+    viewport_h = 600;
     
-var heightmap_w = heightmap.width,
-    heightmap_h = heightmap.height;
+var heightmap_w = 256,
+    heightmap_h = 256;
 
 var viewport_imagedata = viewport_g.getImageData(0,0,viewport_w,viewport_h);
 var viewport_buffer32 = new Uint32Array(viewport_imagedata.data.buffer);
 
-var heightmap_imagedata = heightmap_g.getImageData(0,0,heightmap_w,heightmap_h);
-var heightmap_buffer32 = new Uint32Array(heightmap_imagedata.data.buffer);
-
-var heightmap_arr = new Uint8ClampedArray(heightmap_w * heightmap_h);
-
-var player_x = heightmap_w / 2
-var player_y = heightmap_h / 2;
-var player_h = 50;
+var player_x = 0;
+var player_y = 0;
+var player_h = 100;
 var player_dir = 0;
 
-var ceil_h = 400;
+var ceil_h = 1000;
 
-var far_distance = 100;
-var near_distance = 1;
-var focal_length = viewport_w / 2; // 90 degree fov
+var far_distance = 200;
 
-var interpolate = true;
+var water_level = 140;
 
-var water_level = 120;
+var n_components = 15;
+var intensity = 2;
 
-function vertLine(arr, x, y_start, y_end, r, g, b){
-  for (var y = y_start | 0; y < y_end | 0; y++) {
-    var i = viewport_w * y + x;
-
-    var v = 255 << 24;
-    v |= b << 16;
-    v |= g << 8;
-    v |= r;
-    
-    arr[i] = v;
+function vertLine(x, y_start, y_end, r, g, b){
+  for (var y = y_start|0; y < y_end; y++) {    
+    viewport_buffer32[viewport_w * y + x] = (255<<24)+(b<<16)+(g<<8)+r;
   }
 };
 
-function drawViewport(arr) {
+function drawViewport() {
 
   var horizon = viewport_h / 2;
-  var horizon_top = horizon - 100;
-  var h_scale = 30;
+  var h_scale = 30;  
 
-  // y-buffer for drawing front-to-back
+  // y-buffers for drawing front-to-back
   var y_buf = [];
-  for (var i = 0; i < viewport_w; ++i) 
-    y_buf[i] = viewport_h;
-
   var y_buf_top = [];
-  for (var i = 0; i < viewport_w; ++i) 
+  for (var i = 0; i < viewport_w; ++i) {
+    y_buf[i] = viewport_h;
     y_buf_top[i] = 0;
-
-  var half_fov_angle = Math.atan(viewport_w / (2 * focal_length));
-  var cos_hfa = Math.cos(half_fov_angle);
-
-  var l_sin = Math.sin(player_dir + half_fov_angle);
-  var l_cos = Math.cos(player_dir + half_fov_angle);
-
-  var r_sin = Math.sin(player_dir - half_fov_angle);
-  var r_cos = Math.cos(player_dir - half_fov_angle);
-
-  var terrain_h = heightmap_arr[(player_y|0) * heightmap_w + (player_x|0)];
-
-  var d_incr = 0.01;
-  for (var d = near_distance; d <= far_distance; d += d_incr) {
+  }
     
-    d_incr *= 1.01;
+  var l_sin = Math.sin(player_dir + .8) * .7;
+  var l_cos = Math.cos(player_dir + .8) * .7;
 
-    var d_ = d / cos_hfa;
+  var r_sin = Math.sin(player_dir - .8) * .7;
+  var r_cos = Math.cos(player_dir - .8) * .7;
 
-    var lx = player_x + d_ * l_sin;
-    var ly = player_y + d_ * l_cos;
+  var terrain_h = evalHeightmap(player_x, player_y);//heightmap_arr[(player_y|0) * heightmap_w + (player_x|0)];
 
-    var rx = player_x + d_ * r_sin;
-    var ry = player_y + d_ * r_cos;
+  var d_incr = .01;
+  for (var d = 4; d <= far_distance; d += d_incr) {
     
-    // draw fov cone on heightmap
-    
-    heightmap_g.strokeStyle = "rgb(0,255,0)";
-    heightmap_g.beginPath();
-    
-    heightmap_g.moveTo(lx, ly);
-    heightmap_g.lineTo(rx, ry);
-    heightmap_g.stroke();
+    d_incr *= 1.02;
 
-    heightmap_g.closePath();
+    var lx = player_x + d * l_sin;
+    var ly = player_y + d * l_cos;
+
+    var rx = player_x + d * r_sin;
+    var ry = player_y + d * r_cos;
     
     // sample pl..pr line for each x pixel
     var dx = (rx - lx) / viewport_w;
     var dy = (ry - ly) / viewport_w;
 
     for (var i = 0; i < viewport_w; ++i) {
-      
-      var map_x_f = (lx + i * dx);
-      var map_y_f = (ly + i * dy);
 
-      while (map_x_f < 0) map_x_f += heightmap_w;
-      while (map_y_f < 0) map_y_f += heightmap_h;
-
-      map_x_f %= heightmap_w;
-      map_y_f %= heightmap_h;
-
-      var map_x_i = map_x_f | 0;
-      var map_y_i = map_y_f | 0;
-
-      var map_h = 0;
-      var map_arr_ind = map_y_i * heightmap_w + map_x_i;
-
-      if (interpolate) {
-
-        var frac_x = map_x_f - map_x_i;
-        var frac_y = map_y_f - map_y_i;
-
-        var map_x_i_2 = (map_x_i + 1) % heightmap_w;
-        var map_y_i_2 = (map_y_i + 1) % heightmap_h;
-
-        map_h += heightmap_arr[map_y_i * heightmap_w + map_x_i]     * (1 - frac_x) * (1 - frac_y);
-        map_h += heightmap_arr[map_y_i * heightmap_w + map_x_i_2]   * (frac_x) * (1 - frac_y);
-        map_h += heightmap_arr[map_y_i_2 * heightmap_w + map_x_i]   * (1 - frac_x) * (frac_y);
-        map_h += heightmap_arr[map_y_i_2 * heightmap_w + map_x_i_2] * frac_x * frac_y;
-        map_h = map_h | 0;
-
-      } else {
-        map_h = heightmap_arr[map_arr_ind];
-      }
+      var map_h = evalHeightmap(lx + i * dx, ly + i * dy);
 
       var map_top = map_h * map_h * map_h / 10000;
 
@@ -151,18 +114,24 @@ function drawViewport(arr) {
 
       var fog = 1 - (d * d / (far_distance * far_distance));
 
-      vertLine(arr, i, y_buf_top[i], Math.min(viewport_y_top, y_buf[i]), r * fog, g * fog, b * fog); // ceil
+      // ceiling
+
+      //vertLine(i, y_buf_top[i], Math.min(viewport_y_top, y_buf[i]), r * fog, g * fog, b * fog); // ceil
+
+      // floor
 
       if (map_h < water_level) {
+        var depth = 0; 
         r = 50;
         g = 100;
         b = 255;
+        viewport_y = horizon + (terrain_h + player_h - water_level) / d * h_scale;
       }
 
-      vertLine(arr, i, Math.max(y_buf_top[i], viewport_y), y_buf[i], r * fog, g * fog, b * fog); // bot
+      vertLine(i, Math.max(y_buf_top[i], viewport_y), y_buf[i], r * fog, g * fog, b * fog); // bot
 
 
-      y_buf_top[i] = Math.max(viewport_y_top, y_buf_top[i]);
+      //y_buf_top[i] = Math.max(viewport_y_top, y_buf_top[i]);
       y_buf[i] = Math.min(viewport_y, y_buf[i]);
 
     }
@@ -170,27 +139,11 @@ function drawViewport(arr) {
 
   // clear sky
   for (var i = 0; i < viewport_w; ++i)
-    vertLine(arr, i, y_buf_top[i], y_buf[i], 0,0,0);
+    vertLine(i, y_buf_top[i], y_buf[i], 0,0,0);
 };
- 
-function drawHeightmap(arr) {
-  for (var y = 0; y < heightmap_h; ++y) {
-    for (var x = 0; x < heightmap_w; ++x) {
 
-      var ht = heightmap_arr[y * heightmap_w + x];
 
-      var v = 255 << 24;
-      v |= ht << 16;
-      v |= ht << 8;
-      v |= ht;
-
-      var i = heightmap_w * y + x;
-      arr[i] = v;
-    }
-  }
-}
-
-function generateHeightmap(n_components) {
+//function generateHeightmap(n_components) {
 
   var x_freq = [];
   var y_freq = [];
@@ -201,78 +154,35 @@ function generateHeightmap(n_components) {
   for (var i = 0; i < n_components; ++i) {
     //directions.push(i+1);
 
-    x_freq.push((Math.random() * (i+1)) | 0);
-    y_freq.push((Math.random() * (i+1)) | 0);
+    x_freq.push((Math.random() * (i+5)*intensity) | 0);
+    y_freq.push((Math.random() * (i+5)*intensity) | 0);
     amplitudes.push((n_components - i) * (n_components - i));
     total_amp += amplitudes[i];
   }
 
-  for (var y = 0; y < heightmap_h; ++y) {
-    for (var x = 0; x < heightmap_w; ++x) {
-      var ht = 0; 
+function evalHeightmap(x, y) {
+  var ht = 0; 
 
-      // add sine wave components
-      for (var c = 0; c < n_components; ++c) {
-        var v = x_freq[c]*x + y_freq[c]*y;
-        ht += amplitudes[c] * 
-              (1 + Math.sin(v / heightmap_w * Math.PI * 2)) / 2;
-      }
-
-      // normalize to 0..255
-      ht /= total_amp;
-      ht *= 255;
-
-      // clip values below 126 for "water level"
-      //ht = (ht > 126) ? (ht-126)*2 : 0;
-
-      heightmap_arr[y * heightmap_w + x] = ht | 0; 
-    }
+  // add sine wave components
+  for (var c = 0; c < n_components; ++c) {
+    var v = x_freq[c]*x + y_freq[c]*y;
+    ht += amplitudes[c] * 
+          (1 + Math.sin(v / heightmap_w * Math.PI * 2)) / 2;
   }
 
-};
-
-function init() {
-  generateHeightmap(100);
+  // normalize to 0..255
+  return (ht * 255 / total_amp); 
 }
 
-function update() {
+(function tick() {
+
   player_dir -= 0.004;
   player_y += 0.2;
   if (player_y < 0) player_y += heightmap_h;
   if (player_y > heightmap_h-1) player_y -= heightmap_h;
-}
-
-function draw() {
   
-  drawHeightmap(heightmap_buffer32);
-  heightmap_g.putImageData(heightmap_imagedata, 0, 0);
-
   drawViewport(viewport_buffer32);
   viewport_g.putImageData(viewport_imagedata, 0, 0);
-  
-};
 
-var prev_time = 0;
-var ticks = 0;
-var tick_time = 0;
-
-function tick(timestamp) {
-  ++ticks;
-  var tick_start = new Date().getTime();
-
-  document.getElementById("fps").innerHTML = "" + 1000 / (timestamp - prev_time);
-  document.getElementById("frametime").innerHTML = "" + tick_time / ticks;
-
-  prev_time = timestamp;
-
-  update();
-  draw();
-
-  var tick_end = new Date().getTime();
-  tick_time += (tick_end - tick_start);
-
-  window.requestAnimationFrame(tick);
-}
-
-init();
-window.requestAnimationFrame(tick);
+  window.setTimeout(tick,0);
+})();
