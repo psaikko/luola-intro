@@ -20,41 +20,45 @@ document.body.innerHTML = "<canvas id='V'width='800'height='600'style='width:100
 new Audio("data:audio/wav;base64,"+btoa("RIFF$\xa6\x0e\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00@\x1f\x00\x00@\x1f\x00\x00\x01\x00\x08\x00data\x00\xa6\x0e\x00"+String.fromCharCode.apply(0, heightmap_arr))).play();
 
 var viewport_g = document.getElementById("V").getContext("2d");
-    
+
 var viewport_w = 800;
 var viewport_h = 600;
     
-var heightmap_dim = 2000;
+var heightmap_dim = 1<<8;
 
 var viewport_imagedata = viewport_g.getImageData(0,0,viewport_w,viewport_h);
-var viewport_buffer32 = new Uint32Array(viewport_imagedata.data.buffer);
+var buffer = viewport_imagedata.data;
 
-var player_x = heightmap_dim/2;
+var player_x = 300;
 var player_y = 0;
-var player_h = 600;
+var player_h = 160;
 
-var far_distance = 600;
+var far_distance = 500;
 
-var water_level = 160;
+var water_level = 150;
+var h_scale = 1000;  
 
-var t = 0;
+var horizon = viewport_h / 2;
 
 var y_buf = [];
 var y_buf_top = [];
 
 function vertLine(x, y_start, y_end){
-  for (var i = y_start|0; i < y_end; i++)
-    viewport_buffer32[viewport_w * i + x] = (255<<24)+(b<<16)+(g<<8)+r;
-};
+  for (var i = y_start|0; i < y_end; i++) {
+    var j = (viewport_w*i + x)*4;
+    buffer[j++] = r;
+    buffer[j++] = g;
+    buffer[j++] = b;
+    buffer[j++] = 255;
+  }
+}
 
 function getSample(x, y) {
-  return heightmap_arr[x%heightmap_dim + (y%heightmap_dim) * heightmap_dim];
+  return heightmap_arr[((x|0)+heightmap_dim)%heightmap_dim + 
+                       ((y|0)+heightmap_dim)%heightmap_dim * heightmap_dim];
 }
 
 function drawViewport() {
-
-  var horizon = viewport_h / 2;
-  var h_scale = 30;  
 
   // y-buffers for drawing front-to-back
   for (var i = 0; i < viewport_w; i++) {
@@ -62,89 +66,84 @@ function drawViewport() {
     y_buf_top[i] = 0;
   }
 
-  t++;
-
   for (var d = 0; d < far_distance; d++) {
 
     var lx = player_x + d /2;
     var rx = player_x - d /2;
-
-    var my = (player_y + d /2)|0;
+    var my = player_y + d /2;
 
     for (var i = 0; i < viewport_w; i++) {
       var mx = (lx + i * (rx - lx) / viewport_w)|0;
 
       var map_h = getSample(mx,my);
 
-      var map_top = map_h * map_h / 100;
-
-      var viewport_y_top = horizon - (1000 + player_h - map_top) / d * h_scale;
-
-      //var viewport_y = horizon + (100 + player_h - map_h) / d * h_scale;
+      var viewport_y_top = horizon - (player_h - map_h) / d * h_scale;
 
       var fog = 1 - d / far_distance;
 
-      var shadow = (1 + ((map_h - getSample(mx+1,my+1)) / (map_h)))/2;
+      var tex = getSample(mx, my)*fog;
 
-      var tex = getSample(mx*5, my*30)/8;
+      r = tex*.8;
+      g = r/2;
+      b = g/2;
 
-      r = (tex + 255*7/8)*shadow*fog*.7;
-      g = (tex + 255*7/8)*shadow*fog*.4;
-      b = (tex + 255*7/8)*shadow*fog*.2;
-
-      // ceiling
-      vertLine(i, y_buf_top[i], viewport_y_top, viewport_h); // ceil
-      
       // floor
       if (map_h < water_level) {
-        var depth = map_h / water_level;
-        var wave = (100 + getSample(mx*5+t,my*5+t)/10)*(1-depth)*fog;
+        var depth = Math.pow(map_h / water_level,5);
+        var wave = getSample(mx*2+player_y,my*3+player_y)/2*fog*(1-depth)
 
-        r = wave + depth*depth * r;
-        g = wave + depth*depth * g;
-        b = wave + depth*depth * b;
-
-        map_h = water_level;
+        r = wave + r * depth;
+        g = 1.4*wave + g * depth;
+        b = wave + b * depth;
       }
 
       var viewport_y = horizon + (player_h - map_h) / d * h_scale;
       
-      vertLine(i, viewport_y, y_buf[i]); // bot
+      // ceiling
+      vertLine(i, y_buf_top[i], Math.min(viewport_y_top, y_buf[i])); // ceil
+      // floor
+      vertLine(i, Math.max(viewport_y, y_buf_top[i]), y_buf[i]); // bot
 
-      y_buf_top[i] = Math.max(viewport_y_top, y_buf_top[i]);
+      y_buf_top[i] = Math.max(viewport_y_top, y_buf_top[i])
       y_buf[i] = Math.min(viewport_y, y_buf[i]);
     }
   }
 
   // clear sky
-  for (var i = 0; i < viewport_w; i++)
-    vertLine(i, y_buf_top[i], y_buf[i]);
+  for (var i = 0; i < viewport_w; i++) vertLine(i, y_buf_top[i], y_buf[i]);
 };
 
-var x_freq =     [ 16, 22, 19, 23, 13, 29, 27];
-var y_freq =     [ 11,  6, 26,  8, 18, 10, 7 ];
-var amplitudes = [ 50, 40, 32, 25, 18, 13, 5 ];
+var r=1
 
-for (var i = 0; i < heightmap_dim; i++)
-  for (var j = 0; j < heightmap_dim; j++) {
-    var ht = 0; 
+function color(avg, depth) {
+  var p = depth / heightmap_dim * 2;
+  return avg * (1-p) + (.5+(r = (16807*r + 1)|0)/8e9)*255 * p;
+}
 
-    // add sine wave components
-    for (var k = 0; k < 7; k++)
-      ht += amplitudes[k] * (1 + Math.sin((x_freq[k]*i + y_freq[k]*j) / 1000 * 6.18));
+var skip = heightmap_dim/2;
+var diamond = true;
 
-    heightmap_arr[j * heightmap_dim + i] = ht;
+while (skip|0) {
+  var odd = false;
+  for (var y = diamond ? skip : 0; y < heightmap_dim; y += diamond ? skip*2 : skip) {
+    for (var x = diamond ? skip : (odd ? 0 : skip); x < heightmap_dim; x += skip*2) {
+      var sum = diamond ? getSample(x-skip,y-skip) + getSample(x+skip,y-skip) + getSample(x-skip,y+skip) + getSample(x+skip,y+skip) :
+                          getSample(x-skip,y) + getSample(x+skip,y) + getSample(x,y-skip) + getSample(x,y+skip);
+      heightmap_arr[x + heightmap_dim * y] = color(sum/4, skip)|0;
+    }
+    odd = !odd;
   }
+  
+  if (diamond = !diamond) skip /= 2;
+}
 
 (function tick() {
-
-  //0 -= 0.002;
   
-  player_y += 0.3;
+  player_y += 0.5;
   
   drawViewport();
 
   viewport_g.putImageData(viewport_imagedata, 0, 0);
 
-  window.setTimeout(tick,1);
+  window.setTimeout(tick,0);
 })();
