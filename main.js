@@ -2,135 +2,122 @@
 // Audio
 //
 
-var heightmap_arr = [];
+var data = [r=1];
 
-function wave(i, freq) {
-  return Math.sin(i * .0008 * freq) > 0;
-}
+function rng() { return .5+(r = (16807*r + 1)|0)/8e9; }
 
-for (var i = 0; i < 480000; ++i) {
-  heightmap_arr[i] = wave(i, 220 * (2 + Math.sin(i * .0008)))*255;
+var audio_data ;
+var k = 100;
+for (var i = 0; i < 960000; i++) {
+  var x = i % 8000
+
+/*
+  var bt0 = beat_time(i, sample_rate, 10);
+
+  var bi = beat_idx(i, sample_rate, 10);
+*/
+  if (!x) k *= Math.pow(1.06,rng()*8-4|0);
+
+  //data[i] = 0;
+  audio_data += String.fromCharCode(70 * ((i%k)/k + (i%k/2)/k/2 * (1-x/8000) + 1 - rng()*(i%2000)/2000) | 0); 
+  //if (bi % 10 < 3) data[i] += (66 * noise(i, sample_rate, f1) * bt0 * bt0) | 0; 
 }
 
 //
 // Video
 //
 
-document.body.innerHTML = "<canvas id='V'width='800'height='600'style='width:100%;height:100%;'>";
-new Audio("data:audio/wav;base64,"+btoa("RIFF$\xa6\x0e\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00@\x1f\x00\x00@\x1f\x00\x00\x01\x00\x08\x00data\x00\xa6\x0e\x00"+String.fromCharCode.apply(0, heightmap_arr))).play();
+document.body.style = "margin:0"
+document.body.innerHTML = "<canvas id=2d width=960 height=540 style='width:100%;height:100%;cursor:none'>";
+new Audio("data:audio/wav;base64,"+btoa("RIFF$\xa6\x0e\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x80>\x00\x00\x01\x00\x08\x00data\x00\xa6\x0e\x00"+audio_data)).play();
 
-var viewport_g = document.getElementById("V").getContext("2d");
-
-var viewport_w = 800;
-var viewport_h = 600;
+var viewport_g = document.getElementById("2d").getContext("2d");
+var viewport_w = 960;
+var viewport_h = 540;
     
 var heightmap_dim = 1<<8;
 
 var viewport_imagedata = viewport_g.getImageData(0,0,viewport_w,viewport_h);
 var buffer = viewport_imagedata.data;
 
-var player_x = 300;
-var player_y = 0;
-var player_h = 160;
+var player_x = 200;
+var player_y = r = 6;
+var player_h = 150;
 
-var far_distance = 500;
+var far_distance = 540;
 
-var water_level = 150;
-var h_scale = 1000;  
+var water_level = 145;
+var h_scale = 960;
 
-var horizon = viewport_h / 2;
+function px(x,y) {
+  var j = (viewport_w*y + x)*4;
+  buffer[j++] = r;
+  buffer[j++] = g;
+  buffer[j++] = b;
+  buffer[j++] = 255;
+}
 
-var y_buf = [];
-var y_buf_top = [];
-
-function vertLine(x, y_start, y_end){
-  for (var i = y_start|0; i < y_end; i++) {
-    var j = (viewport_w*i + x)*4;
-    buffer[j++] = r;
-    buffer[j++] = g;
-    buffer[j++] = b;
-    buffer[j++] = 255;
-  }
+function vertLine(x, y_start, y_buf){
+  for (var i = y_start|0; i < y_buf; i++)
+    px(x,i), px(x, viewport_h-i)
 }
 
 function getSample(x, y) {
-  return heightmap_arr[((x|0)+heightmap_dim)%heightmap_dim + 
+  return data[((x|0)+heightmap_dim)%heightmap_dim + 
                        ((y|0)+heightmap_dim)%heightmap_dim * heightmap_dim];
 }
 
 function drawViewport() {
 
-  // y-buffers for drawing front-to-back
   for (var i = 0; i < viewport_w; i++) {
-    y_buf[i] = viewport_h;
-    y_buf_top[i] = 0;
-  }
+    var y_buf = viewport_h;
 
-  for (var d = 0; d < far_distance; d++) {
+    for (var d = 0; d < far_distance; d++) {
 
-    var lx = player_x + d /2;
-    var rx = player_x - d /2;
-    var my = player_y + d /2;
-
-    for (var i = 0; i < viewport_w; i++) {
-      var mx = (lx + i * (rx - lx) / viewport_w)|0;
+      var my = player_y + d /2;
+      var mx = (player_x + d/2 + i * -d / viewport_w)|0;
 
       var map_h = getSample(mx,my);
 
-      var viewport_y_top = horizon - (player_h - map_h) / d * h_scale;
+      //var viewport_y_top = horizon - (player_h - map_h) / d * h_scale;
 
       var fog = 1 - d / far_distance;
 
-      var tex = getSample(mx, my)*fog;
+      var viewport_y = viewport_h/2 + (player_h - map_h) / d * h_scale;
 
-      r = tex*.8;
-      g = r/2;
-      b = g/2;
+      var depth = Math.min(1,Math.pow(map_h / water_level, 8));
 
-      // floor
-      if (map_h < water_level) {
-        var depth = Math.pow(map_h / water_level,5);
-        var wave = getSample(mx*2+player_y,my*3+player_y)/2*fog*(1-depth)
+      var wave = getSample(mx*2+player_y, my*4+player_y*2)/2*fog*(1-depth)
 
-        r = wave + r * depth;
-        g = 1.4*wave + g * depth;
-        b = wave + b * depth;
-      }
+      r = wave + map_h*fog*depth*.8;
+      g = 1.6*wave + map_h*fog*depth*.5;
+      b = wave + map_h*fog*depth*.3;        
 
-      var viewport_y = horizon + (player_h - map_h) / d * h_scale;
-      
-      // ceiling
-      vertLine(i, y_buf_top[i], Math.min(viewport_y_top, y_buf[i])); // ceil
-      // floor
-      vertLine(i, Math.max(viewport_y, y_buf_top[i]), y_buf[i]); // bot
-
-      y_buf_top[i] = Math.max(viewport_y_top, y_buf_top[i])
-      y_buf[i] = Math.min(viewport_y, y_buf[i]);
+      vertLine(i, Math.max(viewport_y, viewport_h/2), y_buf);
+      y_buf = Math.min(viewport_y, y_buf);
     }
+
+    // clear sky
+    vertLine(i, viewport_h/2, y_buf);
   }
-
-  // clear sky
-  for (var i = 0; i < viewport_w; i++) vertLine(i, y_buf_top[i], y_buf[i]);
 };
-
-var r=1
 
 function color(avg, depth) {
   var p = depth / heightmap_dim * 2;
-  return avg * (1-p) + (.5+(r = (16807*r + 1)|0)/8e9)*255 * p;
+  return avg/4 * (1-p) + rng()*255 * p;
 }
 
 var skip = heightmap_dim/2;
-var diamond = true;
+var diamond = 1;
 
 while (skip|0) {
-  var odd = false;
-  for (var y = diamond ? skip : 0; y < heightmap_dim; y += diamond ? skip*2 : skip) {
-    for (var x = diamond ? skip : (odd ? 0 : skip); x < heightmap_dim; x += skip*2) {
-      var sum = diamond ? getSample(x-skip,y-skip) + getSample(x+skip,y-skip) + getSample(x-skip,y+skip) + getSample(x+skip,y+skip) :
-                          getSample(x-skip,y) + getSample(x+skip,y) + getSample(x,y-skip) + getSample(x,y+skip);
-      heightmap_arr[x + heightmap_dim * y] = color(sum/4, skip)|0;
-    }
+  var odd = 0;
+  for (var y = 0; y < heightmap_dim; y += skip) {
+    if (diamond)
+      y+=skip;
+    for (var x = (diamond||!odd) ? skip : 0; x < heightmap_dim; x += skip*2)
+      data[x + heightmap_dim * y] = color(diamond ? getSample(x-skip,y-skip) + getSample(x+skip,y-skip) + getSample(x-skip,y+skip) + getSample(x+skip,y+skip) :
+                          getSample(x-skip,y) + getSample(x+skip,y) + getSample(x,y-skip) + getSample(x,y+skip), skip)|0;
     odd = !odd;
   }
   
@@ -139,7 +126,7 @@ while (skip|0) {
 
 (function tick() {
   
-  player_y += 0.5;
+  player_y += .4;
   
   drawViewport();
 
