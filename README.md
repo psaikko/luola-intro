@@ -8,3 +8,5 @@ To compile to 1k:
 - Run compress.sh
 
 Uncompressed intro live on [github.io](https://psaikko.github.io/luola-intro/)
+
+Runs best on firefox 
