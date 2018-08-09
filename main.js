@@ -17,13 +17,14 @@ for (var i = 0; i < 960000; i++) {
 // Video
 //
 
-document.body.style = "margin:0"
-document.body.innerHTML = "<canvas id=2d width=960 height=540 style='width:100%;height:100%;cursor:none'>";
-new Audio("data:audio/wav;base64,"+btoa("RIFF$\xa6\x0e\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x80>\x00\x00\x01\x00\x08\x00data\x00\xa6\x0e\x00"+audio_data)).play();
+c.parentNode.innerHTML = '<canvas id=c style=width:100%;height:100%;cursor:none>'
+c.parentNode.style = "margin:0"
+new Audio("data:audio/wav;base64,"+btoa("RIFFdataWAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x80>\x00\x00\x01\x00\x08\x00data\x00\xa6\x0e\x00"+audio_data)).play();
+var viewport_g = c.getContext("2d");
+var viewport_w = c.width = 960;
+var viewport_h = c.height = 540;
 
-var viewport_g = document.getElementById("2d").getContext("2d");
-var viewport_w = 960;
-var viewport_h = 540;
+//document.body.appendChild(c);
 
 var heightmap_dim = 1024;
 
@@ -112,7 +113,7 @@ while (skip|0) {
 }
 
 (function tick() {
-  window.setTimeout(tick,16);
+  setTimeout(tick,16);
   player_y += .3;
 
   drawViewport();
